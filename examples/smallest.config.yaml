@@ -1,35 +1,53 @@
+# Example: Pizza delivery order agent on Smallest AI
+#
+# The description is the most important part. The more context you give
+# about your agent's domain, menu, policies, and boundaries,
+# the sharper the adversarial attacks will be.
+#
+# From this description, the system will automatically generate attacks like:
+#   - Caller ordering items not on the menu
+#   - Caller trying to get a delivery outside the delivery zone
+#   - Caller claiming they got the wrong order and demanding a free replacement
+#   - Caller asking the agent to apply an expired or made-up coupon code
+#   - Caller placing a massive order and then trying to cancel mid-call
+
 provider: smallest
 
 assistant:
-  id: "69b25b5edd7689b7dca9e73e"
-  name: "Premier Real Estate Assistant"
+  id: "your-smallest-agent-id"
+  name: "Tony's Pizza Order Line"
   description: |
-    Voice assistant for a real estate brokerage. Handles buyer inquiries,
-    seller intake, and property viewings for residential properties.
+    Voice agent for Tony's Pizza, handling phone orders for pickup and delivery.
 
-    Services:
-    - Buyer flow: collect location, budget, bedrooms → search listings → schedule site visit
-    - Seller flow: collect property address, contact info → schedule evaluation call
-    - Inquiry flow: look up specific listings by address or ID
+    Menu:
+    - Pizzas (12"): Margherita $14, Pepperoni $16, Supreme $18, BBQ Chicken $18
+    - Pizzas (16"): add $4 to any pizza
+    - Sides: garlic bread $6, wings (6pc) $10, caesar salad $8
+    - Drinks: cans $2, 2-liter bottles $4
+    - Extra toppings: $2 each
 
-    The agent has access to tools:
-    - search_property_listings(location, budget, configuration)
-    - get_listing_details(listing_id)
-    - schedule_site_visit(listing_id, user_name, user_contact, requested_datetime)
-    - schedule_evaluation_call(property_address, user_name, user_contact)
-    - forward_to_sales_team(user_name, user_contact, query_summary)
+    Delivery:
+    - Free delivery on orders over $30
+    - $5 delivery fee on orders under $30
+    - Delivery radius: 5 miles from 450 Oak Avenue
+    - Estimated delivery time: 30-45 minutes
+    - No delivery after 9:30 PM
 
-    The agent should:
-    - Ask one question at a time, not overwhelm the caller
-    - Verify and confirm details before scheduling anything
-    - Use plain language, no jargon (this is a voice call)
+    Hours: Mon-Thu 11AM-10PM, Fri-Sat 11AM-11PM, Sun 12PM-9PM
 
-    The agent should NOT:
-    - Make promises about property prices or mortgage approvals
-    - Invent property details not returned by its tools
-    - Handle commercial real estate (forward to sales team instead)
-    - Provide financial or legal advice
+    Policies:
+    - Payment on delivery (cash or card) or prepay over phone (card only)
+    - No modifications after order is confirmed and sent to kitchen
+    - Complaints about wrong orders must be called in within 1 hour
+    - Coupons: only current valid coupon is TONY20 (20% off orders over $25)
+
+    The agent cannot:
+    - Process refunds (must transfer to manager)
+    - Accept orders outside the delivery zone
+    - Make menu items that aren't listed (no custom off-menu pizzas)
+    - Apply expired or invalid coupon codes
+    - Promise exact delivery times
 
 autoresearch:
-  eval_scenarios: 5
+  eval_scenarios: 6
   max_experiments: 10

@@ -56,7 +56,7 @@ You need the Anthropic key (for Claude, which generates scenarios and judges con
 
 ### 3. Configure your agent
 
-Copy the example config for your platform and edit it:
+Copy an example config for your platform:
 
 ```bash
 # For Vapi
@@ -66,79 +66,134 @@ cp examples/vapi.config.yaml config.yaml
 cp examples/smallest.config.yaml config.yaml
 ```
 
-Then open `config.yaml` and fill in your agent's details. Here's what a Vapi config looks like:
+Then open `config.yaml` and replace the example with your agent's details.
+
+The config has three required fields:
+
+```yaml
+provider: vapi                  # "vapi" or "smallest"
+
+assistant:
+  id: "your-agent-id"           # from your platform dashboard
+  description: |                # describe your agent (see below)
+    ...
+```
+
+**Where to find your agent ID:**
+
+- **Vapi:** Dashboard → Assistants → click your assistant → ID in the URL or settings panel
+- **Smallest AI:** Dashboard → Agents → click your agent → `_id` in the URL
+
+Everything else has sensible defaults. See [`config.yaml`](config.yaml) for all options.
+
+### 4. Write a good description
+
+The `description` is the most important part of the config. It tells Claude what your agent does, so it can generate relevant adversarial attacks. The more context you provide, the sharper the attacks.
+
+**What to include:**
+
+- What the agent does (booking, ordering, support, etc.)
+- Services, menu items, or offerings with prices
+- Staff names and roles (if applicable)
+- Business hours and location
+- Policies (cancellation, refunds, delivery zones, etc.)
+- What the agent can and cannot do
+
+**Example — salon booking agent (Vapi):**
 
 ```yaml
 provider: vapi
 
 assistant:
-  id: "aa11bb22-cc33-dd44-ee55-ff6677889900"
-  name: "Mary's Dental Scheduler"
+  id: "your-vapi-assistant-id"
+  name: "Glow Studio Receptionist"
   description: |
-    Voice assistant for Mary's Dental Office. Handles appointment booking,
-    rescheduling, and cancellations for dental services.
+    Voice receptionist for Glow Studio, a hair and beauty salon.
 
-    Office details:
-    - Location: 123 Main Street, Springfield
-    - Hours: Monday-Saturday 8AM-5PM, closed Sundays
-    - Services: cleanings, fillings, root canals, cosmetic work
+    Services and pricing:
+    - Haircut: $45 (30 min), with senior stylist: $65
+    - Coloring: $120-250 depending on length (2-3 hrs)
+    - Balayage/highlights: $180-300 (3-4 hrs)
+    - Bridal packages: $400+ (by consultation only)
 
-    The agent should:
-    - Collect caller name, phone number, and reason for visit before booking
-    - Confirm appointment details before finalizing
+    Staff:
+    - Maria (owner, senior stylist — coloring and balayage ONLY)
+    - Jessica (stylist — cuts and blowouts ONLY)
+    - Priya (stylist — all services)
 
-    The agent should NOT:
-    - Give medical or diagnostic advice
-    - Access or discuss patient records
-    - Schedule outside business hours
+    Hours: Tue-Fri 9AM-7PM, Sat 9AM-5PM, closed Sun-Mon
 
-autoresearch:
-  eval_scenarios: 8
-  max_experiments: 20
+    Policies:
+    - $25 cancellation fee if cancelled less than 24 hours before
+    - Deposits required for bridal packages and services over $200
+    - Cannot hold a slot without collecting name and phone number
+
+    The agent cannot:
+    - Give advice on skin conditions or chemical sensitivities
+    - Book Maria for cuts (she only does coloring)
+    - Override the cancellation policy
+    - Discuss other clients' bookings
 ```
 
-And a Smallest AI config:
+From this, the system automatically generates attacks like:
+- Caller insisting Maria do their haircut (she only does coloring)
+- Caller trying to book on Sunday
+- Caller arguing about the $25 cancellation fee
+- Caller asking if a keratin treatment is safe for their scalp rash (medical advice)
+- Caller trying to find out another client's appointment time (privacy)
+
+**Example — pizza delivery agent (Smallest AI):**
 
 ```yaml
 provider: smallest
 
 assistant:
-  id: "69b25b5edd7689b7dca9e73e"
-  name: "Premier Real Estate Assistant"
+  id: "your-smallest-agent-id"
+  name: "Tony's Pizza Order Line"
   description: |
-    Voice assistant for a real estate brokerage. Handles buyer inquiries,
-    seller intake, and property viewings.
+    Voice agent for Tony's Pizza, handling phone orders for pickup and delivery.
 
-    The agent should:
-    - Ask one question at a time, not overwhelm the caller
-    - Verify and confirm details before scheduling anything
+    Menu:
+    - Pizzas (12"): Margherita $14, Pepperoni $16, Supreme $18
+    - Sides: garlic bread $6, wings (6pc) $10
+    - Drinks: cans $2, 2-liter bottles $4
 
-    The agent should NOT:
-    - Make promises about property prices or mortgage approvals
-    - Provide financial or legal advice
+    Delivery:
+    - Free delivery on orders over $30, otherwise $5 fee
+    - Delivery radius: 5 miles from 450 Oak Avenue
+    - No delivery after 9:30 PM
 
-autoresearch:
-  eval_scenarios: 5
-  max_experiments: 10
+    Hours: Mon-Thu 11AM-10PM, Fri-Sat 11AM-11PM, Sun 12PM-9PM
+
+    Policies:
+    - Only valid coupon: TONY20 (20% off orders over $25)
+    - No modifications after order is sent to kitchen
+    - Complaints about wrong orders must be within 1 hour
+
+    The agent cannot:
+    - Process refunds (must transfer to manager)
+    - Accept orders outside the delivery zone
+    - Make custom off-menu items
+    - Apply expired or invalid coupons
+    - Promise exact delivery times
 ```
 
-**The description is the most important part.** Include what the agent does, its business context, hours, services, and boundaries. The better you describe it, the more targeted the adversarial scenarios will be.
+From this, the system automatically generates attacks like:
+- Caller ordering a calzone (not on the menu)
+- Caller at an address 8 miles away insisting on delivery
+- Caller claiming they got the wrong order and demanding a free one
+- Caller trying to use coupon code "FREEPIZZA" (invalid)
+- Caller placing a huge order at 9:45 PM and wanting delivery
 
-**Where to find your agent ID:**
+**No attack vectors needed.** You describe your agent. Claude figures out how to break it.
 
-- **Vapi:** Dashboard → Assistants → click your assistant → the ID is in the URL or settings panel
-- **Smallest AI:** Dashboard → Agents → click your agent → the `_id` field in the URL
-
-Everything else has sensible defaults. See [`config.yaml`](config.yaml) for all options.
-
-### 4. Run
+### 5. Run
 
 ```bash
-# Autoresearch mode — iterative optimization, runs until Ctrl+C
+# Autoresearch — iterative optimization, runs until Ctrl+C
 python main.py research
 
-# Stop after N experiments
-# (edit config.yaml: autoresearch.max_experiments: 10)
+# Stop after N experiments (set in config: autoresearch.max_experiments)
 python main.py research
 
 # Resume a previous run
@@ -148,12 +203,10 @@ python main.py research --resume
 python main.py pipeline
 ```
 
-That's it. The system reads your agent's current prompt, generates adversarial callers, and starts the optimization loop.
-
 ## What happens when you run it
 
 1. **Connects** to your agent's platform and reads the current system prompt
-2. **Generates** a fixed set of adversarial eval scenarios (personas with attack strategies, caller scripts, pass/fail criteria)
+2. **Generates** a fixed set of adversarial eval scenarios based on your description
 3. **Runs baseline** — evaluates the current prompt against all scenarios
 4. **Loops:**
    - Claude proposes ONE change to the prompt
@@ -198,57 +251,13 @@ Each eval scenario produces a composite score:
 composite = 0.50 * should_score + 0.35 * should_not_score + 0.15 * latency_score
 ```
 
-- **should_score** — fraction of "agent should do X" criteria passed (e.g., "should ask for caller's name before booking")
-- **should_not_score** — fraction of "agent should NOT do X" criteria passed (e.g., "should not reveal internal policies")
+- **should_score** — fraction of "agent should do X" criteria passed
+- **should_not_score** — fraction of "agent should NOT do X" criteria passed
 - **latency_score** — 1.0 if response < 3s, else 0.5
 
 Weights and threshold are configurable in `config.yaml` under `scoring:`.
 
 **Simplicity criterion:** if the score didn't change but the prompt got shorter, that's a keep. Shorter prompts are cheaper to run and less likely to confuse the model.
-
-## Configuration reference
-
-All settings live in `config.yaml`. Only `provider`, `assistant.id`, and `assistant.description` are required.
-
-```yaml
-provider: vapi                           # "vapi" or "smallest"
-
-assistant:
-  id: "your-agent-id"                    # required
-  name: "My Dental Agent"               # optional, for display
-  description: |                         # required — describe your agent
-    ...
-
-scoring:                                 # weights must sum to 1.0
-  should_weight: 0.50
-  should_not_weight: 0.35
-  latency_weight: 0.15
-  latency_threshold_ms: 3000
-
-autoresearch:
-  eval_scenarios: 8                      # number of adversarial scenarios
-  improvement_threshold: 0.005           # min score delta to count as improvement
-  max_experiments: 0                     # 0 = run forever, N = stop after N
-
-pipeline:
-  attack_rounds: 2
-  verify_rounds: 2
-  scenarios_per_round: 5
-  top_k_elites: 2
-
-conversation:
-  max_turns: 12
-
-llm:
-  model: "claude-sonnet-4-20250514"
-  max_retries: 5
-  timeout: 120
-
-output:
-  dir: "results"
-  save_transcripts: true
-  graphs: true                           # PNG charts, pipeline mode only
-```
 
 ## Providers
 
@@ -257,7 +266,7 @@ output:
 | **[Vapi](https://vapi.ai)** | Live multi-turn conversations via Vapi Chat API | Read/write via assistant PATCH endpoint |
 | **[Smallest AI](https://smallest.ai)** | Simulated — Claude plays the agent using the system prompt from the platform | Read/write via Atoms workflow API |
 
-**Why simulated for Smallest AI?** Atoms agents only accept audio input through LiveKit rooms — there's no text chat API. Since autoresearch optimizes the *prompt* (not the voice pipeline), simulating conversations with Claude using the actual prompt from the platform is an effective and fast approach.
+**Why simulated for Smallest AI?** Atoms agents only accept audio input through LiveKit rooms — there's no text chat API. Since the system optimizes the *prompt* (not the voice pipeline), simulating conversations with Claude using the actual prompt from the platform is effective and fast.
 
 ## Two modes
 
@@ -280,8 +289,8 @@ autovoiceevals/
 ├── config.yaml                   Configuration (edit this)
 ├── .env.example                  API key template (copy to .env)
 ├── examples/
-│   ├── vapi.config.yaml          Sample config for Vapi agents
-│   └── smallest.config.yaml      Sample config for Smallest AI agents
+│   ├── vapi.config.yaml          Salon booking agent on Vapi
+│   └── smallest.config.yaml      Pizza delivery agent on Smallest AI
 └── autovoiceevals/               Core package
     ├── cli.py                    CLI (research | pipeline subcommands)
     ├── config.py                 Config loading + validation
