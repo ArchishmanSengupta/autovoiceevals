@@ -18,9 +18,18 @@ from .config import Config
 from .models import EvalResult, ExperimentRecord, Metrics, Scenario
 from .scoring import composite_score, aggregate
 from .evaluator import Evaluator
-from .vapi import VapiClient
 from .llm import LLMClient
 from . import display
+
+
+def _build_provider(cfg: Config, llm_client: LLMClient | None = None):
+    """Create the voice platform client based on config.provider."""
+    if cfg.provider == "smallest":
+        from .smallest import SmallestClient
+        return SmallestClient(cfg.smallest_api_key, llm_client=llm_client)
+    else:
+        from .vapi import VapiClient
+        return VapiClient(cfg.vapi_api_key)
 
 
 # -------------------------------------------------------------------
@@ -28,14 +37,14 @@ from . import display
 # -------------------------------------------------------------------
 
 def _eval_scenario(
-    vapi: VapiClient,
+    provider,
     evaluator: Evaluator,
     cfg: Config,
     assistant_id: str,
     scenario: Scenario,
 ) -> EvalResult:
     """Run one scenario: conversation -> judge -> score."""
-    conv = vapi.run_conversation(
+    conv = provider.run_conversation(
         assistant_id, scenario.id,
         scenario.caller_script, cfg.conversation.max_turns,
     )
@@ -76,7 +85,7 @@ def _eval_scenario(
 
 
 def _run_eval_suite(
-    vapi: VapiClient,
+    provider,
     evaluator: Evaluator,
     cfg: Config,
     assistant_id: str,
@@ -85,7 +94,7 @@ def _run_eval_suite(
     """Run the full eval suite, printing each result."""
     results: list[EvalResult] = []
     for sc in eval_suite:
-        result = _eval_scenario(vapi, evaluator, cfg, assistant_id, sc)
+        result = _eval_scenario(provider, evaluator, cfg, assistant_id, sc)
         display.eval_result_line(result)
         results.append(result)
     return results
@@ -130,8 +139,7 @@ def run(cfg: Config, resume: bool = False) -> None:
     max_experiments = cfg.autoresearch.max_experiments
     n_eval = cfg.autoresearch.eval_scenarios
 
-    # Build clients
-    vapi = VapiClient(cfg.vapi_api_key)
+    # Build clients (LLM first — needed by SmallestClient for simulated conversations)
     llm = LLMClient(
         cfg.anthropic_api_key,
         model=cfg.llm.model,
@@ -139,6 +147,7 @@ def run(cfg: Config, resume: bool = False) -> None:
         max_retries=cfg.llm.max_retries,
     )
     evaluator = Evaluator(llm)
+    provider = _build_provider(cfg, llm_client=llm)
 
     # --- Resume or fresh start ---
     prev_state = _load_resume_state(out_dir) if resume else None
@@ -174,7 +183,7 @@ def run(cfg: Config, resume: bool = False) -> None:
         experiment = history[-1].number if history else 0
 
         # Ensure Vapi has the best prompt
-        vapi.update_prompt(assistant_id, best_prompt)
+        provider.update_prompt(assistant_id, best_prompt)
 
         display.info(f"Resumed from experiment {experiment}")
         display.info(f"Best score: {best_score:.3f}")
@@ -191,7 +200,7 @@ def run(cfg: Config, resume: bool = False) -> None:
         display.header("AutoVoiceEvals \u2014 Autoresearch Mode")
         display.info("Propose \u2192 Eval \u2192 Keep/Revert \u2192 Repeat Forever")
 
-        original_prompt = vapi.get_system_prompt(assistant_id)
+        original_prompt = provider.get_system_prompt(assistant_id)
         best_prompt = original_prompt
 
         display.blank()
@@ -241,7 +250,7 @@ def run(cfg: Config, resume: bool = False) -> None:
         display.section("EXPERIMENT 0: BASELINE")
         display.blank()
         baseline_results = _run_eval_suite(
-            vapi, evaluator, cfg, assistant_id, eval_suite,
+            provider, evaluator, cfg, assistant_id, eval_suite,
         )
         baseline = aggregate(baseline_results)
         best_score = baseline.avg_score
@@ -336,14 +345,14 @@ def run(cfg: Config, resume: bool = False) -> None:
                 continue
 
             # 2. Apply proposed prompt to Vapi
-            if not vapi.update_prompt(assistant_id, new_prompt):
+            if not provider.update_prompt(assistant_id, new_prompt):
                 display.experiment_skip("Vapi update failed")
                 continue
 
             # 3. Run eval suite
             display.blank()
             eval_results = _run_eval_suite(
-                vapi, evaluator, cfg, assistant_id, eval_suite,
+                provider, evaluator, cfg, assistant_id, eval_suite,
             )
             m = aggregate(eval_results)
             new_score = m.avg_score
@@ -367,7 +376,7 @@ def run(cfg: Config, resume: bool = False) -> None:
                 last_eval = eval_results
             else:
                 status = "discard"
-                vapi.update_prompt(assistant_id, best_prompt)
+                provider.update_prompt(assistant_id, best_prompt)
 
             dt = time.time() - t0
 
@@ -421,7 +430,7 @@ def run(cfg: Config, resume: bool = False) -> None:
     # Restore original prompt
     display.blank()
     display.info("Restoring original prompt on Vapi...")
-    vapi.update_prompt(assistant_id, original_prompt)
+    provider.update_prompt(assistant_id, original_prompt)
 
     # Save best prompt
     best_path = os.path.join(out_dir, "best_prompt.txt")
