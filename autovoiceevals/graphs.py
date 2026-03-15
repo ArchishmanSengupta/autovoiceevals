@@ -38,57 +38,111 @@ def generate_research(experiments: list[dict], output_dir: str) -> list[str]:
 
 
 def _research_score_progression(experiments: list[dict], output_dir: str) -> str:
-    """Score over experiments with keep/discard markers and best-score line."""
-    nums = [e["experiment"] for e in experiments]
-    scores = [e["score"] for e in experiments]
-    statuses = [e.get("status", "keep") for e in experiments]
+    """Score progression — Karpathy style.
 
-    fig, ax = plt.subplots(figsize=(14, 6))
+    Small gray dots for discards, large green dots for keeps,
+    step-line for running best, clean annotations on keeps only.
+    """
+    n_total = len(experiments) - 1  # exclude baseline from count
+    n_kept = sum(1 for e in experiments if e.get("status") == "keep") - 1
 
-    # Score line
-    ax.plot(nums, scores, "-", color="#95a5a6", lw=1.5, alpha=0.6, zorder=2)
+    fig, ax = plt.subplots(figsize=(16, 7))
 
-    # Keep/discard markers
-    for n, s, st in zip(nums, scores, statuses):
-        if st == "keep":
-            ax.scatter(n, s, color="#2ecc71", s=140, edgecolors="white",
-                       lw=2, zorder=5, label="Keep" if n == nums[0] else None)
-        elif st == "discard":
-            ax.scatter(n, s, color="#e74c3c", s=100, edgecolors="white",
-                       lw=1.5, zorder=4, marker="x", label="Discard" if st not in
-                       [statuses[i] for i in range(nums.index(n))] else None)
-        else:
-            ax.scatter(n, s, color="#f39c12", s=80, edgecolors="white",
-                       lw=1.5, zorder=4, marker="s")
-
-    # Best score running line
-    best_running = []
-    best = 0
+    # --- Discarded: small, light gray, de-emphasized ---
     for e in experiments:
-        if e.get("status") == "keep":
-            best = e["score"]
-        best_running.append(best)
-    ax.step(nums, best_running, where="post", color="#2ecc71", lw=2.5,
-            ls="--", alpha=0.7, label="Best score", zorder=3)
-
-    # Annotate keeps
-    for e in experiments:
-        if e.get("status") == "keep" and e["experiment"] > 0:
-            desc = e.get("description", "")[:35]
-            ax.annotate(
-                f"exp {e['experiment']}: {desc}",
-                xy=(e["experiment"], e["score"]),
-                xytext=(10, 15), textcoords="offset points",
-                fontsize=7.5, color="#27ae60",
-                arrowprops=dict(arrowstyle="-", color="#27ae60", lw=0.8),
+        if e.get("status") != "keep":
+            ax.scatter(
+                e["experiment"], e["score"],
+                color="#cccccc", s=40, zorder=2, alpha=0.7,
             )
 
-    ax.set_xlabel("Experiment", fontsize=12)
-    ax.set_ylabel("Composite Score", fontsize=12)
-    ax.set_title("AutoVoiceEvals — Score Progression", fontsize=14, fontweight="bold")
-    ax.set_ylim(0, 1.1)
-    ax.legend(fontsize=10, loc="lower right")
-    ax.grid(True, alpha=0.3, axis="y")
+    # --- Running best step-line (green, solid) ---
+    keep_nums = []
+    keep_scores = []
+    for e in experiments:
+        if e.get("status") == "keep":
+            keep_nums.append(e["experiment"])
+            keep_scores.append(e["score"])
+
+    # Extend the step line to the last experiment
+    last_exp = experiments[-1]["experiment"] if experiments else 0
+    step_x = []
+    step_y = []
+    for i, (n, s) in enumerate(zip(keep_nums, keep_scores)):
+        step_x.append(n)
+        step_y.append(s)
+        # Extend horizontally to next keep (or end)
+        if i < len(keep_nums) - 1:
+            step_x.append(keep_nums[i + 1])
+            step_y.append(s)
+        else:
+            step_x.append(last_exp)
+            step_y.append(s)
+
+    ax.plot(step_x, step_y, "-", color="#2ecc71", lw=2.5, alpha=0.8,
+            zorder=3, label="Running best")
+
+    # --- Kept: large green dots ---
+    first_keep = True
+    for e in experiments:
+        if e.get("status") == "keep":
+            ax.scatter(
+                e["experiment"], e["score"],
+                color="#2ecc71", s=120, edgecolors="white", lw=2,
+                zorder=5, label="Kept" if first_keep else None,
+            )
+            first_keep = False
+
+    # --- Discard label (just once for legend) ---
+    ax.scatter([], [], color="#cccccc", s=40, label="Discarded")
+
+    # --- Annotate keeps with short descriptions ---
+    kept_exps = [e for e in experiments if e.get("status") == "keep"]
+    # Alternate annotation positions to avoid overlap
+    for i, e in enumerate(kept_exps):
+        desc = e.get("description", "")
+        # Shorten intelligently
+        if len(desc) > 40:
+            desc = desc[:37] + "..."
+        if e["experiment"] == 0:
+            desc = "baseline"
+
+        # Alternate above/below to reduce clutter
+        y_offset = 18 if i % 2 == 0 else -22
+
+        ax.annotate(
+            desc,
+            xy=(e["experiment"], e["score"]),
+            xytext=(8, y_offset),
+            textcoords="offset points",
+            fontsize=7.5,
+            color="#27ae60",
+            fontstyle="italic",
+            arrowprops=dict(
+                arrowstyle="-",
+                color="#27ae60",
+                lw=0.7,
+                alpha=0.6,
+            ),
+        )
+
+    # --- Axes ---
+    scores = [e["score"] for e in experiments]
+    y_min = min(scores) - 0.03
+    y_max = max(max(scores) + 0.03, 1.0)
+    ax.set_ylim(y_min, y_max)
+    ax.set_xlim(-0.5, last_exp + 0.5)
+
+    ax.set_xlabel("Experiment #", fontsize=13)
+    ax.set_ylabel("Composite Score (higher is better)", fontsize=13)
+    ax.set_title(
+        f"AutoVoiceEvals: {n_total} Experiments, "
+        f"{n_kept} Kept Improvements",
+        fontsize=15, fontweight="bold",
+    )
+
+    ax.legend(fontsize=11, loc="lower right")
+    ax.grid(True, alpha=0.2)
 
     plt.tight_layout()
     p = os.path.join(output_dir, "01_score_progression.png")
