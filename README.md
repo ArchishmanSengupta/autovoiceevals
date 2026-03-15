@@ -56,31 +56,80 @@ You need the Anthropic key (for Claude, which generates scenarios and judges con
 
 ### 3. Configure your agent
 
-Open `config.yaml` and set three things:
+Copy the example config for your platform and edit it:
 
-```yaml
-# 1. Which platform your agent is on
-provider: vapi              # "vapi" or "smallest"
+```bash
+# For Vapi
+cp examples/vapi.config.yaml config.yaml
 
-# 2. Your agent's ID (from the platform dashboard)
-assistant:
-  id: "your-agent-id"
-
-# 3. A description of what your agent does (used to generate relevant attacks)
-  description: |
-    Voice assistant for a dental office. Handles appointment booking,
-    rescheduling, and cancellations. Office at 123 Main St, open
-    Mon-Sat 8AM-5PM, closed Sundays. Cannot give medical advice.
+# For Smallest AI
+cp examples/smallest.config.yaml config.yaml
 ```
 
-The description matters — the better you describe your agent's domain, services, and boundaries, the more targeted the adversarial scenarios will be.
+Then open `config.yaml` and fill in your agent's details. Here's what a Vapi config looks like:
+
+```yaml
+provider: vapi
+
+assistant:
+  id: "aa11bb22-cc33-dd44-ee55-ff6677889900"
+  name: "Mary's Dental Scheduler"
+  description: |
+    Voice assistant for Mary's Dental Office. Handles appointment booking,
+    rescheduling, and cancellations for dental services.
+
+    Office details:
+    - Location: 123 Main Street, Springfield
+    - Hours: Monday-Saturday 8AM-5PM, closed Sundays
+    - Services: cleanings, fillings, root canals, cosmetic work
+
+    The agent should:
+    - Collect caller name, phone number, and reason for visit before booking
+    - Confirm appointment details before finalizing
+
+    The agent should NOT:
+    - Give medical or diagnostic advice
+    - Access or discuss patient records
+    - Schedule outside business hours
+
+autoresearch:
+  eval_scenarios: 8
+  max_experiments: 20
+```
+
+And a Smallest AI config:
+
+```yaml
+provider: smallest
+
+assistant:
+  id: "69b25b5edd7689b7dca9e73e"
+  name: "Premier Real Estate Assistant"
+  description: |
+    Voice assistant for a real estate brokerage. Handles buyer inquiries,
+    seller intake, and property viewings.
+
+    The agent should:
+    - Ask one question at a time, not overwhelm the caller
+    - Verify and confirm details before scheduling anything
+
+    The agent should NOT:
+    - Make promises about property prices or mortgage approvals
+    - Provide financial or legal advice
+
+autoresearch:
+  eval_scenarios: 5
+  max_experiments: 10
+```
+
+**The description is the most important part.** Include what the agent does, its business context, hours, services, and boundaries. The better you describe it, the more targeted the adversarial scenarios will be.
 
 **Where to find your agent ID:**
 
 - **Vapi:** Dashboard → Assistants → click your assistant → the ID is in the URL or settings panel
 - **Smallest AI:** Dashboard → Agents → click your agent → the `_id` field in the URL
 
-Everything else in `config.yaml` has sensible defaults. You can tune later if needed.
+Everything else has sensible defaults. See [`config.yaml`](config.yaml) for all options.
 
 ### 4. Run
 
@@ -230,6 +279,9 @@ autovoiceevals/
 ├── main.py                       Entry point
 ├── config.yaml                   Configuration (edit this)
 ├── .env.example                  API key template (copy to .env)
+├── examples/
+│   ├── vapi.config.yaml          Sample config for Vapi agents
+│   └── smallest.config.yaml      Sample config for Smallest AI agents
 └── autovoiceevals/               Core package
     ├── cli.py                    CLI (research | pipeline subcommands)
     ├── config.py                 Config loading + validation
