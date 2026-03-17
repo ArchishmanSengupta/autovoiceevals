@@ -4,7 +4,7 @@ A self-improving loop for voice AI agents. Inspired by the keep/revert pattern f
 
 It generates adversarial callers, attacks your agent, proposes prompt improvements one at a time, keeps what works, reverts what doesn't. Run it overnight, wake up to a better agent.
 
-Works with [Vapi](https://vapi.ai) and [Smallest AI](https://smallest.ai).
+Works with [Vapi](https://vapi.ai), [Smallest AI](https://smallest.ai), and [ElevenLabs ConvAI](https://elevenlabs.io/conversational-ai).
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -50,6 +50,9 @@ VAPI_API_KEY=your-vapi-server-api-key
 
 # If using Smallest AI
 SMALLEST_API_KEY=your-smallest-api-key
+
+# If using ElevenLabs
+ELEVENLABS_API_KEY=your-elevenlabs-api-key
 ```
 
 You need the Anthropic key (for Claude, which generates scenarios and judges conversations) plus the key for whichever voice platform your agent runs on.
@@ -64,6 +67,9 @@ cp examples/vapi.config.yaml config.yaml
 
 # For Smallest AI
 cp examples/smallest.config.yaml config.yaml
+
+# For ElevenLabs
+cp examples/elevenlabs.config.yaml config.yaml
 ```
 
 Then open `config.yaml` and replace the example with your agent's details.
@@ -71,7 +77,7 @@ Then open `config.yaml` and replace the example with your agent's details.
 The config has three required fields:
 
 ```yaml
-provider: vapi                  # "vapi" or "smallest"
+provider: vapi                  # "vapi", "smallest", or "elevenlabs"
 
 assistant:
   id: "your-agent-id"           # from your platform dashboard
@@ -83,6 +89,7 @@ assistant:
 
 - **Vapi:** Dashboard → Assistants → click your assistant → ID in the URL or settings panel
 - **Smallest AI:** Dashboard → Agents → click your agent → `_id` in the URL
+- **ElevenLabs:** Dashboard → Agents → click your agent → ID in the URL
 
 Everything else has sensible defaults. See [`config.yaml`](config.yaml) for all options.
 
@@ -289,8 +296,11 @@ Weights and threshold are configurable in `config.yaml` under `scoring:`.
 |---|---|---|
 | **[Vapi](https://vapi.ai)** | Live multi-turn conversations via Vapi Chat API | Read/write via assistant PATCH endpoint |
 | **[Smallest AI](https://smallest.ai)** | Simulated — Claude plays the agent using the system prompt from the platform | Read/write via Atoms workflow API |
+| **[ElevenLabs ConvAI](https://elevenlabs.io/conversational-ai)** | Native `simulate-conversation` endpoint — ElevenLabs runs the real deployed agent (with its tools and knowledge base) and plays the user via a persona prompt | Read/write via agent PATCH endpoint |
 
 **Why simulated for Smallest AI?** Atoms agents only accept audio input through LiveKit rooms — there's no text chat API. Since the system optimizes the *prompt* (not the voice pipeline), simulating conversations with Claude using the actual prompt from the platform is effective and fast.
+
+**ElevenLabs `simulate-conversation`** runs the entire conversation in a single API call. You provide an adversarial user persona; ElevenLabs' platform generates both sides — the real agent with its actual tools and knowledge base, and an AI-driven caller. This is the closest to a live call without placing one. If your agent's tools require runtime variables (e.g. Twilio's `system__caller_id`), pass them via `assistant.dynamic_variables` in `config.yaml`.
 
 ## Two modes
 
@@ -314,7 +324,8 @@ autovoiceevals/
 ├── .env.example                  API key template (copy to .env)
 ├── examples/
 │   ├── vapi.config.yaml          Salon booking agent on Vapi
-│   └── smallest.config.yaml      Pizza delivery agent on Smallest AI
+│   ├── smallest.config.yaml      Pizza delivery agent on Smallest AI
+│   └── elevenlabs.config.yaml    Medical clinic scheduling agent on ElevenLabs
 └── autovoiceevals/               Core package
     ├── cli.py                    CLI (research | pipeline subcommands)
     ├── config.py                 Config loading + validation
@@ -323,6 +334,7 @@ autovoiceevals/
     ├── display.py                Terminal formatting
     ├── vapi.py                   Vapi client
     ├── smallest.py               Smallest AI client
+    ├── elevenlabs.py             ElevenLabs ConvAI client
     ├── llm.py                    Claude client
     ├── evaluator.py              Scenario generation, judging, prompt proposals
     ├── results.py                Post-run results viewer
