@@ -20,6 +20,11 @@ provider: elevenlabs
 assistant:
   id: "your-elevenlabs-agent-id"
   name: "Riverside Clinic Receptionist"
+  # dynamic_variables: inject values required by your agent's tools at runtime.
+  # Common for Twilio-backed agents that expect phone call metadata:
+  # dynamic_variables:
+  #   system__caller_id: "+15550000000"
+  #   system__call_sid: "CA00000000000000000000000000000000"
   description: |
     Voice scheduling agent for Riverside Family Clinic, a primary care and
     urgent care practice with two locations (Main Street and Westside).

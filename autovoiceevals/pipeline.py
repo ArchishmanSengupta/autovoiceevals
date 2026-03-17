@@ -54,6 +54,7 @@ def _run_round(
             cfg.assistant.id, sid,
             sc.caller_script, cfg.conversation.max_turns,
             scenario=sc,
+            dynamic_variables=cfg.assistant.dynamic_variables,
         )
 
         try:

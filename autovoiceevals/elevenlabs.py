@@ -69,12 +69,12 @@ class ElevenLabsClient:
         """Read the current system prompt from the agent's configuration.
 
         ElevenLabs GET response path:
-          conversational_config -> agent -> prompt -> prompt
+          conversation_config -> agent -> prompt -> prompt
         """
         data = self.get_agent(agent_id)
         try:
             return (
-                data["conversational_config"]["agent"]["prompt"]["prompt"]
+                data["conversation_config"]["agent"]["prompt"]["prompt"]
             )
         except (KeyError, TypeError) as e:
             raise ValueError(
@@ -87,9 +87,6 @@ class ElevenLabsClient:
 
         ElevenLabs PATCH request path:
           conversation_config -> agent -> prompt -> prompt
-
-        Note: PATCH uses 'conversation_config' (no 'al') while GET returns
-        'conversational_config'. This is an ElevenLabs API quirk.
 
         Returns True on success.
         """
@@ -120,6 +117,7 @@ class ElevenLabsClient:
         caller_turns: list[str],
         max_turns: int = 12,
         scenario: Scenario | None = None,
+        dynamic_variables: dict | None = None,
     ) -> Conversation:
         """Run a conversation via ElevenLabs simulate-conversation endpoint.
 
@@ -129,23 +127,28 @@ class ElevenLabsClient:
         the real deployed agent with its actual tools and knowledge base.
 
         Args:
-            assistant_id: ElevenLabs agent ID.
-            scenario_id:  Scenario identifier (for tracking only).
-            caller_turns: Scripted caller messages from the Scenario.
-                          caller_turns[0] seeds the first_message.
-                          Remaining turns inform the persona's conversation arc.
-            max_turns:    Maximum conversation turns (maps to new_turns_limit).
-            scenario:     Full Scenario object for richer persona construction.
-                          If None, falls back to a basic persona from caller_turns.
+            assistant_id:      ElevenLabs agent ID.
+            scenario_id:       Scenario identifier (for tracking only).
+            caller_turns:      Scripted caller messages from the Scenario.
+                               caller_turns[0] seeds the first_message.
+                               Remaining turns inform the persona's conversation arc.
+            max_turns:         Maximum conversation turns (maps to new_turns_limit).
+            scenario:          Full Scenario object for richer persona construction.
+                               If None, falls back to a basic persona from caller_turns.
+            dynamic_variables: Variables injected into the agent's tools at runtime
+                               (e.g. system__caller_id, system__call_sid for Twilio
+                               agents). Required if the agent's tools reference these.
         """
         conv = Conversation(scenario_id=scenario_id)
 
         # Build request payload
         user_config = _build_user_persona(scenario, caller_turns)
+        sim_spec: dict = {"simulated_user_config": user_config}
+        if dynamic_variables:
+            sim_spec["dynamic_variables"] = dynamic_variables
+
         payload = {
-            "simulation_specification": {
-                "simulated_user_config": user_config,
-            },
+            "simulation_specification": sim_spec,
             "new_turns_limit": max_turns,
         }
 
@@ -155,7 +158,7 @@ class ElevenLabsClient:
                 f"{BASE_URL}/convai/agents/{assistant_id}/simulate-conversation",
                 headers=self._headers,
                 json=payload,
-                timeout=120,  # full conversation can take a while
+                timeout=180,  # full conversation can take a while
             )
             wall_time_ms = (time.time() - t0) * 1000
 
@@ -307,7 +310,10 @@ def _extract_transcript(data: dict) -> list[tuple[str, str, float]]:
     raw: list | None = None
 
     # Priority order: most likely structures first
-    if isinstance(data.get("transcript"), list):
+    # ElevenLabs actual response uses 'simulated_conversation' (confirmed)
+    if isinstance(data.get("simulated_conversation"), list):
+        raw = data["simulated_conversation"]
+    elif isinstance(data.get("transcript"), list):
         raw = data["transcript"]
     elif isinstance(data.get("turns"), list):
         raw = data["turns"]

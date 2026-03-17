@@ -111,6 +111,7 @@ class SmallestClient:
         caller_turns: list[str],
         max_turns: int = 12,
         scenario=None,
+        dynamic_variables=None,
     ) -> Conversation:
         """Run a simulated multi-turn conversation.
 

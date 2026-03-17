@@ -25,6 +25,11 @@ class AssistantConfig:
     id: str
     description: str
     name: str = ""
+    dynamic_variables: dict = None  # ElevenLabs: injected into simulate-conversation
+
+    def __post_init__(self):
+        if self.dynamic_variables is None:
+            self.dynamic_variables = {}
 
 
 @dataclass
@@ -106,7 +111,7 @@ def load_config(path: str | None = None) -> Config:
 
     Raises ValueError on missing required fields or invalid values.
     """
-    load_dotenv(ROOT / ".env")
+    load_dotenv(ROOT / ".env", override=True)
 
     cfg_path = Path(path) if path else ROOT / "config.yaml"
     if not cfg_path.exists():
@@ -169,6 +174,7 @@ def load_config(path: str | None = None) -> Config:
             id=ast["id"],
             description=ast["description"],
             name=ast.get("name", ""),
+            dynamic_variables=ast.get("dynamic_variables", {}),
         ),
         scoring=scoring,
         autoresearch=AutoresearchConfig(

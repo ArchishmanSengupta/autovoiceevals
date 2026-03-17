@@ -48,6 +48,7 @@ def _eval_scenario(
         assistant_id, scenario.id,
         scenario.caller_script, cfg.conversation.max_turns,
         scenario=scenario,
+        dynamic_variables=cfg.assistant.dynamic_variables,
     )
 
     try:
