@@ -90,7 +90,10 @@ class LiveKitConfig:
     data_topic: str = "text"
     response_timeout: float = 30.0
     agent_join_timeout: float = 30.0
-    agent_backend: str = "none"    # "smallest" or "none"
+    agent_backend: str = "none"    # "smallest" | "local" | "none"
+    system_prompt: str = ""        # initial prompt when agent_backend="local"
+    system_prompt_file: str = ""   # path to prompt file; overrides system_prompt if it exists
+    inject_system_prompt: bool = False  # send prompt as first data msg each conversation
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +210,9 @@ def load_config(path: str | None = None) -> Config:
         response_timeout=float(lk.get("response_timeout", 30.0)),
         agent_join_timeout=float(lk.get("agent_join_timeout", 30.0)),
         agent_backend=lk.get("agent_backend", "none"),
+        system_prompt=lk.get("system_prompt", ""),
+        system_prompt_file=lk.get("system_prompt_file", ""),
+        inject_system_prompt=bool(lk.get("inject_system_prompt", False)),
     )
 
     return Config(

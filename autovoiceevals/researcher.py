@@ -34,6 +34,12 @@ def _build_provider(cfg: Config, llm_client: LLMClient | None = None):
         if lk.agent_backend == "smallest":
             from .smallest import SmallestClient
             backend = SmallestClient(cfg.smallest_api_key)
+        elif lk.agent_backend == "local":
+            from .livekit_provider import LocalPromptBackend
+            backend = LocalPromptBackend(
+                initial_prompt=lk.system_prompt,
+                prompt_file=lk.system_prompt_file,
+            )
         return LiveKitClient(
             url=lk.url,
             api_key=cfg.livekit_api_key,
@@ -43,6 +49,7 @@ def _build_provider(cfg: Config, llm_client: LLMClient | None = None):
             response_timeout=lk.response_timeout,
             agent_join_timeout=lk.agent_join_timeout,
             agent_backend=backend,
+            inject_system_prompt=lk.inject_system_prompt,
         )
     else:
         from .vapi import VapiClient

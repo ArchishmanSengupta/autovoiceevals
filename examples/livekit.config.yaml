@@ -4,8 +4,11 @@
 # data channel (text messages). No audio is used.
 #
 # Your agent must listen on data_topic and respond in the same format:
-#   Incoming: {"role": "user",      "content": "<caller turn>"}
-#   Outgoing: {"role": "assistant", "content": "<agent reply>"}
+#   Incoming (optional): {"role": "system",    "content": "<system prompt>"}
+#   Incoming:            {"role": "user",      "content": "<caller turn>"}
+#   Outgoing:            {"role": "assistant", "content": "<agent reply>"}
+#
+# Plain-text responses (non-JSON) are also accepted from the agent.
 #
 # The agent must be configured to auto-join rooms matching room_prefix
 # (via LiveKit Dispatch / webhook). See the livekit-agents SDK docs.
@@ -23,12 +26,31 @@ assistant:
 
 livekit:
   url: "wss://your-project.livekit.cloud"
-  room_prefix: "eval"           # Room names: eval-<uuid>
+  room_prefix: "eval"           # Room names: eval-<scenario>-<uuid>
   data_topic: "text"            # Data channel topic your agent listens on
   response_timeout: 30          # Seconds to wait for each response
   agent_join_timeout: 30        # Seconds to wait for agent to join room
-  agent_backend: "none"         # "smallest" to delegate prompt management
-                                # to Smallest AI, "none" to manage externally
+
+  # Prompt management — choose one:
+  #
+  #   "smallest" — delegate to Smallest AI (requires SMALLEST_API_KEY)
+  #   "local"    — store prompt locally; use with inject_system_prompt: true
+  #                so each conversation starts with the current prompt
+  #   "none"     — manage externally; research/pipeline modes will error
+  #
+  agent_backend: "local"
+
+  # Used when agent_backend is "local":
+  # Provide the initial system prompt inline or via a file path.
+  # If system_prompt_file exists on disk, it takes precedence over system_prompt.
+  system_prompt: |
+    You are a helpful voice assistant. Answer questions clearly and concisely.
+  system_prompt_file: ""        # Optional: e.g. "agent_prompt.txt"
+
+  # Send the current system prompt as the first data message of every
+  # conversation so the agent can apply it before user turns arrive.
+  # Your agent must handle {"role": "system", "content": "..."} messages.
+  inject_system_prompt: true
 
 autoresearch:
   eval_scenarios: 6

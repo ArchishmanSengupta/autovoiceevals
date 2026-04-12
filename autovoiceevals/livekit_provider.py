@@ -15,6 +15,7 @@ Agent requirements
 The target agent must listen on the configured data_topic and reply
 on the same topic. Message format (JSON):
 
+    Caller → Agent:  {"role": "system",    "content": "<system prompt>"}  # optional, if inject_system_prompt=True
     Caller → Agent:  {"role": "user",      "content": "<turn text>"}
     Agent  → Caller: {"role": "assistant", "content": "<reply text>"}
 
@@ -22,20 +23,27 @@ Plain-text responses (non-JSON) are also accepted.
 
 Prompt management
 -----------------
-If agent_backend is "smallest", prompt reads/writes are delegated to
-SmallestClient. If "none", get_system_prompt/update_prompt will raise
-NotImplementedError — use the livekit provider only for conversations
-and manage prompts externally.
+* agent_backend="smallest": prompt reads/writes delegate to SmallestClient.
+* agent_backend="local": prompt is stored locally (in memory or a file).
+  Use inject_system_prompt=True to send the current prompt as the first
+  data message of every conversation so the agent can apply it.
+* agent_backend="none": get_system_prompt/update_prompt raise
+  NotImplementedError — use the livekit provider only for conversations
+  and manage prompts externally.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import os
 import time
 import uuid
 
 from .models import Turn, Conversation
+
+_log = logging.getLogger(__name__)
 
 DEFAULT_END_PHRASES = [
     "have a great day",
@@ -43,6 +51,33 @@ DEFAULT_END_PHRASES = [
     "talk to you soon",
     "take care",
 ]
+
+
+class LocalPromptBackend:
+    """Manages prompts locally without any external API calls.
+
+    Suitable for self-hosted LiveKit agents that read their prompt from a
+    shared file, or for research sessions where the prompt is injected into
+    each conversation via the data channel (inject_system_prompt=True).
+    """
+
+    def __init__(self, initial_prompt: str = "", prompt_file: str = ""):
+        self._file = prompt_file
+        if prompt_file and os.path.exists(prompt_file):
+            with open(prompt_file) as f:
+                self._prompt = f.read().strip()
+        else:
+            self._prompt = initial_prompt
+
+    def get_system_prompt(self, agent_id: str) -> str:
+        return self._prompt
+
+    def update_prompt(self, agent_id: str, new_prompt: str) -> bool:
+        self._prompt = new_prompt
+        if self._file:
+            with open(self._file, "w") as f:
+                f.write(new_prompt)
+        return True
 
 
 class LiveKitClient:
@@ -59,6 +94,7 @@ class LiveKitClient:
         agent_join_timeout: float = 30.0,
         end_phrases: list[str] | None = None,
         agent_backend=None,
+        inject_system_prompt: bool = False,
     ):
         """
         Args:
@@ -71,8 +107,11 @@ class LiveKitClient:
             agent_join_timeout:   Seconds to wait for the agent to join.
             end_phrases:          Phrases that signal conversation end.
             agent_backend:        Optional client for prompt management
-                                  (e.g. SmallestClient). If None, prompt
-                                  methods raise NotImplementedError.
+                                  (e.g. SmallestClient, LocalPromptBackend).
+                                  If None, prompt methods raise NotImplementedError.
+            inject_system_prompt: If True, send the current system prompt as a
+                                  {"role": "system", ...} data message before the
+                                  first caller turn. Requires agent_backend to be set.
         """
         self.url = url.rstrip("/")
         self.api_key = api_key
@@ -83,6 +122,7 @@ class LiveKitClient:
         self.agent_join_timeout = agent_join_timeout
         self.end_phrases = end_phrases or DEFAULT_END_PHRASES
         self._backend = agent_backend
+        self.inject_system_prompt = inject_system_prompt
 
     # ------------------------------------------------------------------
     # Conversations
@@ -148,6 +188,7 @@ class LiveKitClient:
         room = rtc.Room()
         response_queue: asyncio.Queue[str] = asyncio.Queue()
         agent_joined = asyncio.Event()
+        loop = asyncio.get_running_loop()
 
         @room.on("data_received")
         def on_data(packet):
@@ -155,9 +196,23 @@ class LiveKitClient:
             try:
                 raw = bytes(packet.data) if hasattr(packet, "data") else bytes(packet)
                 text = raw.decode("utf-8")
-                response_queue.put_nowait(text)
-            except Exception:
-                pass
+
+                # Filter by topic: only accept messages on our configured topic
+                topic = getattr(packet, "topic", None)
+                if topic is not None and topic != self.data_topic:
+                    _log.debug("data_received: ignoring topic=%s", topic)
+                    return
+
+                # Ignore messages we sent ourselves (guard for edge cases)
+                sender = getattr(packet, "participant", None)
+                if sender is not None and getattr(sender, "identity", "") == identity:
+                    return
+
+                _log.debug("data_received: topic=%s len=%d", topic, len(raw))
+                # Use call_soon_threadsafe in case the SDK fires from a non-asyncio thread
+                loop.call_soon_threadsafe(response_queue.put_nowait, text)
+            except Exception as exc:
+                _log.debug("data_received decode error: %s", exc)
 
         @room.on("participant_connected")
         def on_participant(_participant):
@@ -186,6 +241,18 @@ class LiveKitClient:
             await room.disconnect()
             return conv
 
+        # Optionally inject the current system prompt before any caller turns
+        if self.inject_system_prompt and self._backend is not None:
+            prompt = self._backend.get_system_prompt(assistant_id)
+            sys_payload = json.dumps({"role": "system", "content": prompt}).encode("utf-8")
+            try:
+                await room.local_participant.publish_data(
+                    sys_payload, reliable=True, topic=self.data_topic
+                )
+                await asyncio.sleep(0.2)  # give agent time to apply the prompt
+            except Exception as e:
+                _log.debug("Failed to inject system prompt: %s", e)
+
         # Run turns
         for msg in caller_turns[:max_turns]:
             if not msg or not msg.strip():
@@ -196,6 +263,10 @@ class LiveKitClient:
             payload = json.dumps({"role": "user", "content": msg}).encode("utf-8")
 
             try:
+                # Drain any stale data from previous turns before starting the timer
+                while not response_queue.empty():
+                    response_queue.get_nowait()
+
                 t0 = time.time()
                 await room.local_participant.publish_data(
                     payload,
@@ -249,8 +320,8 @@ class LiveKitClient:
             return self._backend.get_system_prompt(agent_id)
         raise NotImplementedError(
             "No agent_backend configured for LiveKit provider. "
-            "Set livekit.agent_backend: 'smallest' in config.yaml, "
-            "or manage prompts externally."
+            "Set livekit.agent_backend to 'local' (with a system_prompt) or "
+            "'smallest' in config.yaml, or manage prompts externally."
         )
 
     def update_prompt(self, agent_id: str, new_prompt: str) -> bool:
@@ -259,6 +330,6 @@ class LiveKitClient:
             return self._backend.update_prompt(agent_id, new_prompt)
         raise NotImplementedError(
             "No agent_backend configured for LiveKit provider. "
-            "Set livekit.agent_backend: 'smallest' in config.yaml, "
-            "or manage prompts externally."
+            "Set livekit.agent_backend to 'local' (with a system_prompt) or "
+            "'smallest' in config.yaml, or manage prompts externally."
         )
