@@ -27,6 +27,30 @@ def _build_provider(cfg: Config, llm_client: LLMClient | None = None):
     elif cfg.provider == "elevenlabs":
         from .elevenlabs import ElevenLabsClient
         return ElevenLabsClient(cfg.elevenlabs_api_key)
+    elif cfg.provider == "livekit":
+        from .livekit_provider import LiveKitClient
+        lk = cfg.livekit
+        backend = None
+        if lk.agent_backend == "smallest":
+            from .smallest import SmallestClient
+            backend = SmallestClient(cfg.smallest_api_key)
+        elif lk.agent_backend == "local":
+            from .livekit_provider import LocalPromptBackend
+            backend = LocalPromptBackend(
+                initial_prompt=lk.system_prompt,
+                prompt_file=lk.system_prompt_file,
+            )
+        return LiveKitClient(
+            url=lk.url,
+            api_key=cfg.livekit_api_key,
+            api_secret=cfg.livekit_api_secret,
+            room_prefix=lk.room_prefix,
+            data_topic=lk.data_topic,
+            response_timeout=lk.response_timeout,
+            agent_join_timeout=lk.agent_join_timeout,
+            agent_backend=backend,
+            inject_system_prompt=lk.inject_system_prompt,
+        )
     else:
         from .vapi import VapiClient
         return VapiClient(cfg.vapi_api_key)
