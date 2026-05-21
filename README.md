@@ -4,7 +4,7 @@ A self-improving loop for voice AI agents. Inspired by the keep/revert pattern f
 
 It generates adversarial callers, attacks your agent, proposes prompt improvements one at a time, keeps what works, reverts what doesn't. Run it overnight, wake up to a better agent.
 
-Works with [Vapi](https://vapi.ai), [Smallest AI](https://smallest.ai), and [ElevenLabs ConvAI](https://elevenlabs.io/conversational-ai).
+Works with [Vapi](https://vapi.ai), [Smallest AI](https://smallest.ai), [ElevenLabs ConvAI](https://elevenlabs.io/conversational-ai), and [LiveKit](https://livekit.io).
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -53,6 +53,11 @@ SMALLEST_API_KEY=your-smallest-api-key
 
 # If using ElevenLabs
 ELEVENLABS_API_KEY=your-elevenlabs-api-key
+
+# If using LiveKit
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your-livekit-api-key
+LIVEKIT_API_SECRET=your-livekit-api-secret
 ```
 
 You need the Anthropic key (for Claude, which generates scenarios and judges conversations) plus the key for whichever voice platform your agent runs on.
@@ -70,6 +75,9 @@ cp examples/smallest.config.yaml config.yaml
 
 # For ElevenLabs
 cp examples/elevenlabs.config.yaml config.yaml
+
+# For LiveKit
+cp examples/livekit.config.yaml config.yaml
 ```
 
 Then open `config.yaml` and replace the example with your agent's details.
@@ -77,7 +85,7 @@ Then open `config.yaml` and replace the example with your agent's details.
 The config has three required fields:
 
 ```yaml
-provider: vapi                  # "vapi", "smallest", or "elevenlabs"
+provider: vapi                  # "vapi", "smallest", "elevenlabs", or "livekit"
 
 assistant:
   id: "your-agent-id"           # from your platform dashboard
@@ -297,6 +305,7 @@ Weights and threshold are configurable in `config.yaml` under `scoring:`.
 | **[Vapi](https://vapi.ai)** | Live multi-turn conversations via Vapi Chat API | Read/write via assistant PATCH endpoint |
 | **[Smallest AI](https://smallest.ai)** | Simulated — Claude plays the agent using the system prompt from the platform | Read/write via Atoms workflow API |
 | **[ElevenLabs ConvAI](https://elevenlabs.io/conversational-ai)** | Native `simulate-conversation` endpoint — ElevenLabs runs the real deployed agent (with its tools and knowledge base) and plays the user via a persona prompt | Read/write via agent PATCH endpoint |
+| **[LiveKit](https://livekit.io)** | Text-based evals via LiveKit data channel messages — Phase 1 (no audio). Caller bot joins a room and exchanges turns as JSON. | Delegated to `agent_backend` (e.g. `"smallest"`) or managed externally |
 
 **Why simulated for Smallest AI?** Atoms agents only accept audio input through LiveKit rooms — there's no text chat API. Since the system optimizes the *prompt* (not the voice pipeline), simulating conversations with Claude using the actual prompt from the platform is effective and fast.
 
@@ -325,7 +334,8 @@ autovoiceevals/
 ├── examples/
 │   ├── vapi.config.yaml          Salon booking agent on Vapi
 │   ├── smallest.config.yaml      Pizza delivery agent on Smallest AI
-│   └── elevenlabs.config.yaml    Medical clinic scheduling agent on ElevenLabs
+│   ├── elevenlabs.config.yaml    Medical clinic scheduling agent on ElevenLabs
+│   └── livekit.config.yaml       LiveKit data-channel agent (Phase 1)
 └── autovoiceevals/               Core package
     ├── cli.py                    CLI (research | pipeline subcommands)
     ├── config.py                 Config loading + validation
@@ -335,6 +345,7 @@ autovoiceevals/
     ├── vapi.py                   Vapi client
     ├── smallest.py               Smallest AI client
     ├── elevenlabs.py             ElevenLabs ConvAI client
+    ├── livekit_provider.py       LiveKit data channel client
     ├── llm.py                    Claude client
     ├── evaluator.py              Scenario generation, judging, prompt proposals
     ├── results.py                Post-run results viewer
